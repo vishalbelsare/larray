@@ -13,7 +13,7 @@ from larray.core.group import Group
 from larray.core.axis import Axis
 from larray.core.constants import nan
 from larray.core.array import Array, get_axes, ndtest, zeros, zeros_like, sequence      # noqa: F401
-from larray.util.misc import float_error_handler_factory, is_interactive_interpreter, renamed_to, inverseop
+from larray.util.misc import float_error_handler_factory, is_interactive_interpreter, renamed_to, inverseop, size2str
 from larray.inout.session import ext_default_engine, get_file_handler
 
 
@@ -76,27 +76,34 @@ class Session:
     title: my title
     author: John Smith
     """
+
     def __init__(self, *args, meta=None, **kwargs):
         object.__setattr__(self, '_objects', {})
         if meta is None:
             meta = Metadata()
         self.meta = meta
 
-        if len(args) == 1:
-            assert len(kwargs) == 0
-            a0 = args[0]
-            if isinstance(a0, (str, Path)):
-                # assume a0 is a filename
-                self.load(a0)
-            else:
-                # iterable of tuple or dict-like
-                self.update(a0)
+        # When the deprecation period is over, this block can be removed after we replace *args by elements=None
+        if len(args) == 0:
+            elements = None
+        elif len(args) == 1:
+            elements = args[0]
         else:
-            self.add(*args, **kwargs)
+            warnings.warn("Session(obj1, ...) is deprecated, please use Session(obj1name=obj1, ...) instead",
+                          FutureWarning)
+            elements = {a.name: a for a in args}
+
+        if isinstance(elements, (str, Path)):
+            # assume elements is a filename
+            self.load(elements)
+            self.update(**kwargs)
+        else:
+            # iterable of tuple or dict-like
+            self.update(elements, **kwargs)
 
     @property
     def meta(self) -> Metadata:
-        r"""Returns metadata of the session.
+        r"""Return metadata of the session.
 
         Returns
         -------
@@ -118,27 +125,11 @@ class Session:
 
     def add(self, *args, **kwargs) -> None:
         r"""
-        Adds objects to the current session.
-
-        Parameters
-        ----------
-        *args : list of object
-            Objects to add. Objects must have an attribute 'name'.
-        **kwargs : dict of {str: object}
-            Objects to add written as name=array, ...
-
-        Examples
-        --------
-        >>> s = Session()
-        >>> axis1, axis2 = Axis('x=x0..x2'), Axis('y=y0..y2')
-        >>> arr1, arr2, arr3 = ndtest((2, 2)), ndtest(4), ndtest((3, 2))
-        >>> s.add(axis1, axis2, arr1=arr1, arr2=arr2, arr3=arr3)
-        >>> # print item's names in sorted order
-        >>> s.names
-        ['arr1', 'arr2', 'arr3', 'x', 'y']
+        Deprecated. Please use Session.update instead.
         """
-        self._update_from_iterable((arg.name, arg) for arg in args)
-        self._update_from_iterable(kwargs.items())
+        warnings.warn("Session.add() is deprecated. Please use Session.update() instead.",
+                      FutureWarning, stacklevel=2)
+        self.update({arg.name: arg for arg in args}, **kwargs)
 
     def update(self, other=None, **kwargs) -> None:
         r"""
@@ -259,17 +250,17 @@ class Session:
             assert np.issubdtype(key.dtype, np.bool_)
             assert key.ndim == 1
             # only keep True values
-            truenames = key[key].axes[0].labels
-            return Session([(name, self[name]) for name in truenames])
+            true_keys = key[key].axes[0].labels
+            return Session({k: self[k] for k in true_keys})
         elif isinstance(key, (tuple, list)):
             assert all(isinstance(k, str) for k in key)
-            return Session([(k, self[k]) for k in key])
+            return Session({k: self[k] for k in key})
         else:
             return self._objects[key]
 
     def get(self, key, default=None) -> Any:
         r"""
-        Returns the object corresponding to the key.
+        Return the object corresponding to the key.
         If the key doesn't correspond to any object, a default one can be returned.
 
         Parameters
@@ -292,7 +283,7 @@ class Session:
         >>> a01 = a['a0,a1'] >> 'a01'
         >>> # arrays
         >>> arr1, arr2 = ndtest((a, b)), ndtest(a)
-        >>> s = Session([('a', a), ('b', b), ('a01', a01), ('arr1', arr1), ('arr2', arr2)])
+        >>> s = Session({'a': a, 'b': b, 'a01': a01, 'arr1': arr1, 'arr2': arr2})
         >>> arr = s.get('arr1')
         >>> arr
         a\b  b0  b1  b2
@@ -379,8 +370,8 @@ class Session:
         >>> a01 = a['a0,a1'] >> 'a01'                                               # doctest: +SKIP
         >>> # arrays
         >>> arr1, arr2 = ndtest((a, b)), ndtest(a)                                  # doctest: +SKIP
-        >>> ses = Session([('i', i), ('s', s), ('a', a), ('b', b), ('a01', a01),
-        ...                ('arr1', arr1), ('arr2', arr2)])                         # doctest: +SKIP
+        >>> ses = Session({'i': i, 's': s, 'a': a, 'b': b, 'a01': a01,
+        ...                'arr1': arr1, 'arr2': arr2})                             # doctest: +SKIP
         >>> # metadata
         >>> ses.meta.title = 'my title'                                             # doctest: +SKIP
         >>> ses.meta.author = 'John Smith'                                          # doctest: +SKIP
@@ -454,7 +445,7 @@ class Session:
 
     def save(self, fname, names=None, engine='auto', overwrite=True, display=False, **kwargs) -> None:
         r"""
-        Dumps objects from the current session to a file, or several .csv files.
+        Dump objects from the current session to a file, or several .csv files.
         The Excel and CSV formats only dump objects of Array type (plus metadata).
 
         Parameters
@@ -484,8 +475,8 @@ class Session:
         >>> a01 = a['a0,a1'] >> 'a01'                                               # doctest: +SKIP
         >>> # arrays
         >>> arr1, arr2 = ndtest((a, b)), ndtest(a)                                  # doctest: +SKIP
-        >>> ses = Session([('i', i), ('s', s), ('a', a), ('b', b), ('a01', a01),
-        ...                ('arr1', arr1), ('arr2', arr2)])                         # doctest: +SKIP
+        >>> ses = Session({'i': i, 's': s, 'a': a, 'b': b, 'a01': a01,
+        ...                'arr1': arr1, 'arr2': arr2})                             # doctest: +SKIP
         >>> # metadata
         >>> ses.meta.title = 'my title'                                             # doctest: +SKIP
         >>> ses.meta.author = 'John Smith'                                          # doctest: +SKIP
@@ -513,7 +504,7 @@ class Session:
         Update file
 
         >>> arr1, arr4 = ndtest((3, 3)), ndtest((2, 3))                             # doctest: +SKIP
-        >>> ses2 = Session([('arr1', arr1), ('arr4', arr4)])                        # doctest: +SKIP
+        >>> ses2 = Session({'arr1': arr1, 'arr4': arr4})                            # doctest: +SKIP
         >>> # replace arr1 and add arr4 in file output.h5
         >>> ses2.save('output.h5', overwrite=False, display=True)                   # doctest: +SKIP
         dumping arr1 ... done
@@ -534,11 +525,11 @@ class Session:
         else:
             handler = handler_cls(fname, overwrite)
         meta = self.meta if overwrite else None
-        items = self.items()
+        objects = self._objects
         if names is not None:
             names_set = set(names)
-            items = [(k, v) for k, v in items if k in names_set]
-        handler.dump(meta, items, display=display, **kwargs)
+            objects = {k: v for k, v in objects.items() if k in names_set}
+        handler.dump(meta, objects, display=display, **kwargs)
 
     def to_globals(self, names=None, depth=0, warn=True, inplace=False) -> None:
         r"""
@@ -585,12 +576,13 @@ class Session:
                           "Use warn=False to deactivate this warning.",
                           RuntimeWarning, stacklevel=2)
         d = sys._getframe(depth + 1).f_globals
-        items = self.items()
+
+        objects = self._objects
         if names is not None:
             names_set = set(names)
-            items = [(k, v) for k, v in items if k in names_set]
+            objects = {k: v for k, v in objects.items() if k in names_set}
         if inplace:
-            for k, v in items:
+            for k, v in objects.items():
                 if k not in d:
                     raise ValueError(f"'{k}' not found in current namespace. Session.to_globals(inplace=True) requires "
                                      f"all arrays to already exist.")
@@ -602,19 +594,19 @@ class Session:
                                      f"for '{k}'.\nexisting: {d[k].info}\nsession: {v.info}")
                 d[k][:] = v
         else:
-            for k, v in items:
+            for k, v in objects.items():
                 d[k] = v
 
     def to_pickle(self, fname, names=None, overwrite=True, display=False, **kwargs) -> None:
         r"""
-        Dumps objects from the current session to a file using pickle.
+        Dump objects from the current session to a file using pickle.
 
         WARNING: never load a pickle file (.pkl or .pickle) from an untrusted source, as it can lead to arbitrary code
         execution.
 
         Parameters
         ----------
-        fname : str
+        fname : str or Path
             Path for the dump.
         names : list of str or None, optional
             Names of objects to dump.
@@ -635,8 +627,8 @@ class Session:
         >>> a01 = a['a0,a1'] >> 'a01'                                               # doctest: +SKIP
         >>> # arrays
         >>> arr1, arr2 = ndtest((a, b)), ndtest(a)                                  # doctest: +SKIP
-        >>> ses = Session([('i', i), ('s', s), ('a', a), ('b', b), ('a01', a01),
-        ...                ('arr1', arr1), ('arr2', arr2)])                         # doctest: +SKIP
+        >>> ses = Session({'i': i, 's': s, 'a': a, 'b': b, 'a01': a01,
+        ...                'arr1': arr1, 'arr2': arr2})                             # doctest: +SKIP
         >>> # metadata
         >>> ses.meta.title = 'my title'                                             # doctest: +SKIP
         >>> ses.meta.author = 'John Smith'                                          # doctest: +SKIP
@@ -667,11 +659,11 @@ class Session:
 
     def to_hdf(self, fname, names=None, overwrite=True, display=False, **kwargs) -> None:
         r"""
-        Dumps objects from the current session to an HDF file.
+        Dump objects from the current session to an HDF file.
 
         Parameters
         ----------
-        fname : str
+        fname : str or Path
             Path of the file for the dump.
         names : list of str or None, optional
             Names of objects to dump.
@@ -692,8 +684,8 @@ class Session:
         >>> a01 = a['a0,a1'] >> 'a01'                                               # doctest: +SKIP
         >>> # arrays
         >>> arr1, arr2 = ndtest((a, b)), ndtest(a)                                  # doctest: +SKIP
-        >>> ses = Session([('i', i), ('s', s), ('a', a), ('b', b), ('a01', a01),
-        ...                ('arr1', arr1), ('arr2', arr2)])                         # doctest: +SKIP
+        >>> ses = Session({'i': i, 's': s, 'a': a, 'b': b, 'a01': a01,
+        ...                'arr1': arr1, 'arr2': arr2})                             # doctest: +SKIP
         >>> # metadata
         >>> ses.meta.title = 'my title'                                             # doctest: +SKIP
         >>> ses.meta.author = 'John Smith'                                          # doctest: +SKIP
@@ -724,11 +716,11 @@ class Session:
 
     def to_excel(self, fname, names=None, overwrite=True, display=False, **kwargs) -> None:
         r"""
-        Dumps Array objects from the current session to an Excel file.
+        Dump Array objects from the current session to an Excel file.
 
         Parameters
         ----------
-        fname : str
+        fname : str or Path
             Path of the file for the dump.
         names : list of str or None, optional
             Names of Array objects to dump.
@@ -753,8 +745,8 @@ class Session:
         >>> a01 = a['a0,a1'] >> 'a01'                                               # doctest: +SKIP
         >>> # arrays
         >>> arr1, arr2 = ndtest((a, b)), ndtest(a)                                  # doctest: +SKIP
-        >>> ses = Session([('i', i), ('s', s), ('a', a), ('b', b), ('a01', a01),
-        ...                ('arr1', arr1), ('arr2', arr2)])                         # doctest: +SKIP
+        >>> ses = Session({'i': i, 's': s, 'a': a, 'b': b, 'a01': a01,
+        ...                'arr1': arr1, 'arr2': arr2})                             # doctest: +SKIP
         >>> # metadata
         >>> ses.meta.title = 'my title'                                             # doctest: +SKIP
         >>> ses.meta.author = 'John Smith'                                          # doctest: +SKIP
@@ -781,11 +773,11 @@ class Session:
 
     def to_csv(self, fname, names=None, display=False, **kwargs) -> None:
         r"""
-        Dumps Array objects from the current session to CSV files.
+        Dump Array objects from the current session to CSV files.
 
         Parameters
         ----------
-        fname : str
+        fname : str or Path
             Path for the directory that will contain CSV files.
         names : list of str or None, optional
             Names of Array objects to dump.
@@ -808,8 +800,8 @@ class Session:
         >>> a01 = a['a0,a1'] >> 'a01'                                               # doctest: +SKIP
         >>> # arrays
         >>> arr1, arr2 = ndtest((a, b)), ndtest(a)                                  # doctest: +SKIP
-        >>> ses = Session([('i', i), ('s', s), ('a', a), ('b', b), ('a01', a01),
-        ...                ('arr1', arr1), ('arr2', arr2)])                         # doctest: +SKIP
+        >>> ses = Session({'i': i, 's': s, 'a': a, 'b': b, 'a01': a01,
+        ...                'arr1': arr1, 'arr2': arr2})                             # doctest: +SKIP
         >>> # metadata
         >>> ses.meta.title = 'my title'                                             # doctest: +SKIP
         >>> ses.meta.author = 'John Smith'                                          # doctest: +SKIP
@@ -836,7 +828,7 @@ class Session:
 
     def filter(self, pattern=None, kind=None) -> 'Session':
         r"""
-        Returns a new session with objects which match some criteria.
+        Return a new session with objects which match some criteria.
 
         Parameters
         ----------
@@ -861,7 +853,7 @@ class Session:
         >>> axis = Axis('a=a0..a2')
         >>> group = axis['a0,a1'] >> 'a01'
         >>> test1, zero1 = ndtest((2, 2)), zeros((3, 2))
-        >>> s = Session([('test1', test1), ('zero1', zero1), ('axis', axis), ('group', group)])
+        >>> s = Session({'test1': test1, 'zero1': zero1, 'axis': axis, 'group': group})
 
         Filter using a pattern argument
 
@@ -880,19 +872,19 @@ class Session:
         >>> s.filter(kind=(Axis, Group)).names
         ['axis', 'group']
         """
-        items = self._objects.items()
+        objects = self._objects
         if pattern is not None:
             regex = fnmatch.translate(pattern)
             match = re.compile(regex).match
-            items = [(k, v) for k, v in items if match(k)]
+            objects = {k: v for k, v in objects.items() if match(k)}
         if kind is not None:
-            items = [(k, v) for k, v in items if isinstance(v, kind)]
-        return Session(items)
+            objects = {k: v for k, v in objects.items() if isinstance(v, kind)}
+        return Session(objects)
 
     @property
     def names(self) -> List[str]:
         r"""
-        Returns the list of names of the objects in the session.
+        Return the list of names of the objects in the session.
         The list is sorted alphabetically and does not follow the internal order.
 
         Returns
@@ -908,7 +900,7 @@ class Session:
         >>> axis1 = Axis("a=a0..a2")
         >>> group1 = axis1['a0,a1'] >> 'a01'
         >>> arr1, arr2 = ndtest((2, 2)), ndtest(4)
-        >>> s = Session([('arr2', arr2), ('arr1', arr1), ('group1', group1), ('axis1', axis1)])
+        >>> s = Session({'arr2': arr2, 'arr1': arr1, 'group1': group1, 'axis1': axis1})
         >>> # print array's names in the alphabetical order
         >>> s.names
         ['arr1', 'arr2', 'axis1', 'group1']
@@ -920,14 +912,14 @@ class Session:
         return sorted(self._objects.keys())
 
     def copy(self) -> 'Session':
-        r"""Returns a copy of the session.
+        r"""Return a copy of the session.
         """
         # this actually *does* a copy of the internal mapping (the mapping is not reused-as is)
         return self.__class__(self._objects)
 
     def keys(self) -> KeysView[str]:
         r"""
-        Returns a view on the session's keys.
+        Return a view on the session's keys.
 
         Returns
         -------
@@ -942,7 +934,7 @@ class Session:
         >>> axis1 = Axis("a=a0..a2")
         >>> group1 = axis1['a0,a1'] >> 'a01'
         >>> arr1, arr2 = ndtest((2, 2)), ndtest(4)
-        >>> s = Session([('arr2', arr2), ('arr1', arr1), ('group1', group1), ('axis1', axis1)])
+        >>> s = Session({'arr2': arr2, 'arr1': arr1, 'group1': group1, 'axis1': axis1})
         >>> # similar to names by follows the internal order
         >>> list(s.keys())
         ['arr2', 'arr1', 'group1', 'axis1']
@@ -955,7 +947,7 @@ class Session:
 
     def values(self) -> ValuesView[Any]:
         r"""
-        Returns a view on the session's values.
+        Return a view on the session's values.
 
         Returns
         -------
@@ -966,7 +958,7 @@ class Session:
         >>> axis1 = Axis("a=a0..a2")
         >>> group1 = axis1['a0,a1'] >> 'a01'
         >>> arr1, arr2 = ndtest((2, 2)), ndtest(4)
-        >>> s = Session([('arr2', arr2), ('arr1', arr1), ('group1', group1), ('axis1', axis1)])
+        >>> s = Session({'arr2': arr2, 'arr1': arr1, 'group1': group1, 'axis1': axis1})
         >>> # assuming you know the order of objects stored in the session
         >>> arr2, arr1, group1, axis1 = s.values()
         >>> # otherwise, prefer the following syntax
@@ -982,7 +974,7 @@ class Session:
 
     def items(self) -> ItemsView[str, Any]:
         r"""
-        Returns a view of the session’s items ((key, value) pairs).
+        Return a view of the session's items ((key, value) pairs).
 
         Returns
         -------
@@ -995,7 +987,7 @@ class Session:
         >>> arr1, arr2 = ndtest((2, 2)), ndtest(4)
         >>> # make the test pass on both Windows and Linux
         >>> arr1, arr2 = arr1.astype(np.int64), arr2.astype(np.int64)
-        >>> s = Session([('arr2', arr2), ('arr1', arr1), ('group1', group1), ('axis1', axis1)])
+        >>> s = Session({'arr2': arr2, 'arr1': arr1, 'group1': group1, 'axis1': axis1})
         >>> for k, v in s.items():
         ...     print(f"{k}: {v.info if isinstance(v, Array) else repr(v)}")
         arr2: 4
@@ -1140,8 +1132,8 @@ class Session:
         --------
         >>> a = Axis('a=a0..a2')
         >>> a01 = a['a0,a1'] >> 'a01'
-        >>> s1 = Session([('a', a), ('a01', a01), ('arr1', ndtest(2)), ('arr2', ndtest((2, 2)))])
-        >>> s2 = Session([('a', a), ('a01', a01), ('arr1', ndtest(2)), ('arr2', ndtest((2, 2)))])
+        >>> s1 = Session({'a': a, 'a01': a01, 'arr1': ndtest(2), 'arr2': ndtest((2, 2))})
+        >>> s2 = Session({'a': a, 'a01': a01, 'arr1': ndtest(2), 'arr2': ndtest((2, 2))})
 
         Identical sessions
 
@@ -1244,8 +1236,8 @@ class Session:
         --------
         >>> a = Axis('a=a0..a2')
         >>> a01 = a['a0,a1'] >> 'a01'
-        >>> s1 = Session([('a', a), ('a01', a01), ('arr1', ndtest(2)), ('arr2', ndtest((2, 2)))])
-        >>> s2 = Session([('a', a), ('a01', a01), ('arr1', ndtest(2)), ('arr2', ndtest((2, 2)))])
+        >>> s1 = Session({'a': a, 'a01': a01, 'arr1': ndtest(2), 'arr2': ndtest((2, 2))})
+        >>> s2 = Session({'a': a, 'a01': a01, 'arr1': ndtest(2), 'arr2': ndtest((2, 2))})
 
         Identical sessions
 
@@ -1311,7 +1303,7 @@ class Session:
 
         >>> arr1 = ndtest((2, 2, 2))
         >>> arr2 = ndtest((2, 2))
-        >>> sess = Session([('arr1', arr1), ('arr2', arr2)])
+        >>> sess = Session({'arr1': arr1, 'arr2': arr2})
         >>> def print_summary(s):
         ...     print(s.summary({Array: "{key} -> {axes_names}"}))
         >>> print_summary(sess)
@@ -1343,8 +1335,8 @@ class Session:
 
     def compact(self, display=False) -> 'Session':
         r"""
-        Detects and removes "useless" axes (ie axes for which values are constant over the whole axis) for all array
-        objects in session
+        Detect and remove "useless" axes (ie axes for which values are constant over the whole axis) for all array
+        objects in session.
 
         Parameters
         ----------
@@ -1365,18 +1357,12 @@ class Session:
          a1   1   1   1
          a2   2   2   2
         >>> compact_ses = Session(arr1=arr1).compact(display=True)
-        arr1 was constant over {b}
+        arr1 was constant over: b
         >>> compact_ses.arr1
         a  a0  a1  a2
             0   1   2
         """
-        new_items = []
-        for k, v in self._objects.items():
-            compacted = v.compact()
-            if compacted is not v and display:
-                print(k, "was constant over", get_axes(v) - get_axes(compacted))
-            new_items.append((k, compacted))
-        return Session(new_items)
+        return Session({k: v.compact(display=display, name=k) for k, v in self._objects.items()})
 
     def apply(self, func, *args, kind=Array, **kwargs) -> 'Session':
         r"""
@@ -1390,7 +1376,7 @@ class Session:
         *args : any
             Any extra arguments are passed to the function
         kind : type or tuple of types, optional
-            Type(s) of elements `func` will be applied to. Other elements will be left intact. Use ´kind=object´ to
+            Type(s) of elements `func` will be applied to. Other elements will be left intact. Use `kind=object` to
             apply to all kinds of objects. Defaults to Array.
         **kwargs : any
             Any extra keyword arguments are passed to the function
@@ -1410,7 +1396,7 @@ class Session:
         >>> arr2
         a  a0  a1  a2
             0   1   2
-        >>> sess1 = Session([('arr1', arr1), ('arr2', arr2)])
+        >>> sess1 = Session({'arr1': arr1, 'arr2': arr2})
         >>> sess1
         Session(arr1, arr2)
         >>> def increment(array):
@@ -1436,11 +1422,11 @@ class Session:
         a  a0  a1  a2
             4   6   8
         """
-        return Session([(k, func(v, *args, **kwargs) if isinstance(v, kind) else v) for k, v in self.items()])
+        return Session({k: func(v, *args, **kwargs) if isinstance(v, kind) else v for k, v in self.items()})
 
     def summary(self, template=None) -> str:
-        """
-        Returns a summary of the content of the session.
+        r"""
+        Return a summary of the content of the session.
 
         Parameters
         ----------
@@ -1466,10 +1452,10 @@ class Session:
         --------
         >>> axis1 = Axis("a=a0..a2")
         >>> group1 = axis1['a0,a1'] >> 'a01'
-        >>> arr1 = ndtest((2, 2), dtype=np.int64, meta=[('title', 'array 1')])
-        >>> arr2 = ndtest(4, dtype=np.int64, meta=[('title', 'array 2')])
-        >>> arr3 = ndtest((3, 2), dtype=np.int64, meta=[('title', 'array 3')])
-        >>> s = Session([('axis1', axis1), ('group1', group1), ('arr1', arr1), ('arr2', arr2), ('arr3', arr3)])
+        >>> arr1 = ndtest((2, 2), dtype=np.int64, meta={'title': 'array 1'})
+        >>> arr2 = ndtest(4, dtype=np.int64, meta={'title': 'array 2'})
+        >>> arr3 = ndtest((3, 2), dtype=np.int64, meta={'title': 'array 3'})
+        >>> s = Session({'axis1': axis1, 'group1': group1, 'arr1': arr1, 'arr2': arr2, 'arr3': arr3})
         >>> s.meta.title = 'my title'
         >>> s.meta.author = 'John Smith'
 
@@ -1490,11 +1476,11 @@ class Session:
         >>> def print_array(key, array):
         ...     axes_names = ', '.join(array.axes.display_names)
         ...     shape = ' x '.join(str(i) for i in array.shape)
-        ...     return f"{key} -> {axes_names} ({shape})\\n  title = {array.meta.title}\\n  dtype = {array.dtype}"
+        ...     return f"{key} -> {axes_names} ({shape})\n  title = {array.meta.title}\n  dtype = {array.dtype}"
         >>> template = {Axis:  "{key} -> {name} [{labels}] ({length})",
         ...             Group: "{key} -> {name}: {axis_name}{labels} ({length})",
         ...             Array: print_array,
-        ...             Metadata: "\\t{key} -> {value}"}
+        ...             Metadata: "\t{key} -> {value}"}
         >>> print(s.summary(template))   # doctest: +NORMALIZE_WHITESPACE
         Metadata:
             title -> my title
@@ -1550,6 +1536,48 @@ class Session:
         res += '\n'.join(display(k, v) for k, v in self.items())
         return res
 
+    @property
+    def nbytes(self) -> str:
+        r"""Return the memory in bytes consumed by the session.
+
+        Returns
+        -------
+        int
+            Number of bytes of memory used by the session.
+
+        Notes
+        -----
+        This returns a lower bound. Some memory is not accounted for.
+
+        Examples
+        --------
+        >>> # specifying explicit type so that the test has the same result on Linux
+        >>> s = Session(test1=ndtest('sex=M,F', dtype=np.int32),
+        ...             test2=ndtest("age=0..100", dtype=np.int32))
+        >>> s.nbytes
+        412
+        """
+        return sum(v.nbytes for v in self.values() if hasattr(v, 'nbytes'))
+
+    @property
+    def memory_used(self) -> str:
+        r"""Return the memory consumed by the session in human readable form.
+
+        Returns
+        -------
+        str
+            Memory used by the session.
+
+        Examples
+        --------
+        >>> # specifying explicit type so that the test has the same result on Linux
+        >>> s = Session(test1=ndtest('sex=M,F', dtype=np.int32),
+        ...             test2=ndtest("age=0..100", dtype=np.int32))
+        >>> s.memory_used
+        '412 bytes'
+        """
+        return size2str(self.nbytes)
+
 
 def _exclude_private_vars(vars_dict: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in vars_dict.items() if not k.startswith('_')}
@@ -1557,7 +1585,7 @@ def _exclude_private_vars(vars_dict: Dict[str, Any]) -> Dict[str, Any]:
 
 def local_arrays(depth=0, include_private=False, meta=None) -> Session:
     r"""
-    Returns a session containing all local arrays sorted in alphabetical order.
+    Return a session containing all local arrays sorted in alphabetical order.
 
     Parameters
     ----------
@@ -1577,12 +1605,12 @@ def local_arrays(depth=0, include_private=False, meta=None) -> Session:
     d = sys._getframe(depth + 1).f_locals
     if not include_private:
         d = _exclude_private_vars(d)
-    return Session([(k, d[k]) for k in sorted(d.keys()) if isinstance(d[k], Array)], meta=meta)
+    return Session({k: d[k] for k in sorted(d.keys()) if isinstance(d[k], Array)}, meta=meta)
 
 
 def global_arrays(depth=0, include_private=False, meta=None) -> Session:
     r"""
-    Returns a session containing all global arrays sorted in alphabetical order.
+    Return a session containing all global arrays sorted in alphabetical order.
 
     Parameters
     ----------
@@ -1602,12 +1630,12 @@ def global_arrays(depth=0, include_private=False, meta=None) -> Session:
     d = sys._getframe(depth + 1).f_globals
     if not include_private:
         d = _exclude_private_vars(d)
-    return Session([(k, d[k]) for k in sorted(d.keys()) if isinstance(d[k], Array)], meta=meta)
+    return Session({k: d[k] for k in sorted(d.keys()) if isinstance(d[k], Array)}, meta=meta)
 
 
 def arrays(depth=0, include_private=False, meta=None) -> Session:
     r"""
-    Returns a session containing all available arrays (whether they are defined in local or global variables) sorted in
+    Return a session containing all available arrays (whether they are defined in local or global variables) sorted in
     alphabetical order. Local arrays take precedence over global ones (if a name corresponds to both a local
     and a global variable, the local array will be returned).
 
@@ -1639,7 +1667,7 @@ def arrays(depth=0, include_private=False, meta=None) -> Session:
     all_keys = sorted(set(global_vars.keys()) | set(local_vars.keys()))
     combined_vars = [(k, local_vars[k] if k in local_vars else global_vars[k])
                      for k in all_keys]
-    return Session([(k, v) for k, v in combined_vars if isinstance(v, Array)], meta=meta)
+    return Session({k: v for k, v in combined_vars if isinstance(v, Array)}, meta=meta)
 
 
 _session_float_error_handler = float_error_handler_factory(4)

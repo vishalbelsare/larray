@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-#
 # LArray documentation build configuration file, created by
 # sphinx-quickstart on Wed Nov 26 12:22:43 2014.
 #
@@ -12,14 +10,12 @@
 #
 # All configuration values have a default; values that are commented out
 # serve to show the default.
-from __future__ import print_function
-
-import sys
-import os
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
+# import os
+# import sys
 # sys.path.insert(0, os.path.abspath('../../'))
 
 import larray
@@ -44,12 +40,13 @@ extensions = [
     'nbsphinx',
     'sphinx.ext.mathjax',
     'IPython.sphinxext.ipython_directive',
-    'IPython.sphinxext.ipython_console_highlighting'
+    'IPython.sphinxext.ipython_console_highlighting',
+    'sphinx_rtd_theme',
 ]
 
 extlinks = {
-    'issue': ('https://github.com/larray-project/larray/issues/%s', 'issue '),
-    'editor_issue': ('https://github.com/larray-project/larray-editor/issues/%s', 'issue ')
+    'issue': ('https://github.com/larray-project/larray/issues/%s', 'issue %s'),
+    'editor_issue': ('https://github.com/larray-project/larray-editor/issues/%s', 'issue %s')
 }
 
 # scan all found documents for autosummary directives, and to generate stub pages for each.
@@ -104,7 +101,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'LArray'
-copyright = '2014-2017, Gaëtan de Menten, Geert Bryon, Johan Duyck, Alix Damman'
+copyright = '2014-2023, Gaëtan de Menten, Geert Bryon, Johan Duyck, Alix Damman'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the

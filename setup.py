@@ -1,5 +1,5 @@
 import os
-from setuptools import setup, find_packages
+from setuptools import setup, find_namespace_packages
 
 
 def readlocal(fname):
@@ -7,16 +7,17 @@ def readlocal(fname):
 
 
 DISTNAME = 'larray'
-VERSION = '0.34-dev'
+VERSION = '0.34.6'
 AUTHOR = 'Gaetan de Menten, Geert Bryon, Johan Duyck, Alix Damman'
 AUTHOR_EMAIL = 'gdementen@gmail.com'
 DESCRIPTION = "N-D labeled arrays in Python"
 LONG_DESCRIPTION = readlocal("README.rst")
+LONG_DESCRIPTION_CONTENT_TYPE = "text/x-rst"
 SETUP_REQUIRES = []
 # - pandas >= 0.20.0 is required since commit 01669f2024a7bffe47cceec0a0fd845f71b6f7cc
 #   (issue 702 : fixed bug when writing metadata using HDF format)
-INSTALL_REQUIRES = ['numpy >= 1.13', 'pandas >= 0.20.0']
-TESTS_REQUIRE = ['pytest', 'pytest-flake8']
+INSTALL_REQUIRES = ['numpy >= 1.22', 'pandas >= 0.20.0']
+TESTS_REQUIRE = ['pytest']
 
 LICENSE = 'GPLv3'
 URL = 'https://github.com/larray-project/larray'
@@ -29,9 +30,11 @@ CLASSIFIERS = [
     'Intended Audience :: Developers',
     'Programming Language :: Python',
     'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.7',
     'Programming Language :: Python :: 3.8',
     'Programming Language :: Python :: 3.9',
+    'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
+    'Programming Language :: Python :: 3.12',
     'Topic :: Scientific/Engineering',
     'Topic :: Software Development :: Libraries',
 ]
@@ -45,10 +48,11 @@ setup(
     classifiers=CLASSIFIERS,
     description=DESCRIPTION,
     long_description=LONG_DESCRIPTION,
+    long_description_content_type=LONG_DESCRIPTION_CONTENT_TYPE,
     setup_requires=SETUP_REQUIRES,
     install_requires=INSTALL_REQUIRES,
     tests_require=TESTS_REQUIRE,
     url=URL,
-    packages=find_packages(),
+    packages=find_namespace_packages(),
     include_package_data=True,
 )

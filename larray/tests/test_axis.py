@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 
-from larray.tests.common import assert_array_equal, assert_nparray_equal, needs_pytables
+from larray.tests.common import assert_array_equal, assert_nparray_equal, needs_pytables, must_raise
 from larray import Axis, LGroup, IGroup, read_hdf, X, ndtest
 from larray.core.axis import AxisReference
 
@@ -16,34 +16,34 @@ def test_init():
 
     axis = Axis([0, 1], name='test')
     assert axis.name == 'test'
-    assert_nparray_equal(axis.labels, [0, 1])
+    assert_nparray_equal(axis.labels, np.array([0, 1]))
 
     axis = Axis([0, 1], name=np.str_('test'))
     assert axis.name == 'test'
     assert type(axis.name) is not np.str_
-    assert_nparray_equal(axis.labels, [0, 1])
+    assert_nparray_equal(axis.labels, np.array([0, 1]))
 
     sex_tuple = ('M', 'F')
     sex_list = ['M', 'F']
     sex_array = np.array(sex_list)
-    assert_array_equal(Axis(sex_tuple, 'sex').labels, sex_array)
-    assert_array_equal(Axis(sex_list, 'sex').labels, sex_array)
-    assert_array_equal(Axis(sex_array, 'sex').labels, sex_array)
-    assert_array_equal(Axis('sex=M,F').labels, sex_array)
+    assert_nparray_equal(Axis(sex_tuple, 'sex').labels, sex_array)
+    assert_nparray_equal(Axis(sex_list, 'sex').labels, sex_array)
+    assert_nparray_equal(Axis(sex_array, 'sex').labels, sex_array)
+    assert_nparray_equal(Axis('sex=M,F').labels, sex_array)
 
-    assert_array_equal(Axis(range(116), 'age').labels, np.arange(116))
+    assert_nparray_equal(Axis(range(116), 'age').labels, np.arange(116))
     axis = Axis('0..115', 'age')
-    assert_array_equal(axis.labels, np.arange(116))
-    assert_array_equal(Axis('01..12', 'zero_padding').labels, [str(i).zfill(2) for i in range(1, 13)])
-    assert_array_equal(Axis('01,02,03,10,11,12', 'zero_padding').labels, ['01', '02', '03', '10', '11', '12'])
+    assert_nparray_equal(axis.labels, np.arange(116))
+    assert list(Axis('01..12', 'zero_padding').labels) == [str(i).zfill(2) for i in range(1, 13)]
+    assert list(Axis('01,02,03,10,11,12', 'zero_padding').labels) == ['01', '02', '03', '10', '11', '12']
     group = axis[:10]
     group_axis = Axis(group)
-    assert_array_equal(group_axis.labels, np.arange(11))
-    assert_array_equal(group_axis.name, 'age')
+    assert_nparray_equal(group_axis.labels, np.arange(11))
+    assert group_axis.name == 'age'
     other = Axis('other=0..10')
     axis = Axis(other, 'age')
-    assert_array_equal(axis.labels, other.labels)
-    assert_array_equal(axis.name, 'age')
+    assert_nparray_equal(axis.labels, other.labels)
+    assert axis.name == 'age'
 
 
 def test_equals():
@@ -435,10 +435,172 @@ def test_init_from_group():
 
 
 def test_matching():
-    sutcode = Axis(['A23', 'A2301', 'A25', 'A2501'], 'sutcode')
-    assert sutcode.matching(regex='^...$') == LGroup(['A23', 'A25'])
-    assert sutcode.startingwith('A23') == LGroup(['A23', 'A2301'])
-    assert sutcode.endingwith('01') == LGroup(['A2301', 'A2501'])
+    code = Axis(['A1', 'A101', 'A2', 'A201'], 'code')
+    assert code.matching(regex='^..$') == LGroup(['A1', 'A2'])
+    assert code.startingwith('A1') == LGroup(['A1', 'A101'])
+    assert code.endingwith('01') == LGroup(['A101', 'A201'])
+
+
+def test_difference():
+    # 1) no duplicate label
+    a = Axis('a=a0..a2')
+
+    # remove a single label (a1)
+    expected = Axis('a=a0,a2')
+    assert a.difference('a1').equals(expected)
+    assert a.difference(a['a1']).equals(expected)
+    assert a.difference(a[['a1']]).equals(expected)
+    assert a.difference([a['a1']]).equals(expected)
+    # Ideally, this should raise an Exception because this is not a sequence
+    # of labels (it is a sequence of sequences of labels) instead of silently
+    # giving the wrong result, but I am unsure the check is worth the
+    # performance loss
+    # assert a.difference([a[['a1']]]).equals(expected)
+    assert a.difference(a.i[1]).equals(expected)
+    assert a.difference(a.i[[1]]).equals(expected)
+    # this silently fails and should probably work?
+    # assert a.difference([a.i[1]]).equals(expected)
+    # this should raise (not a sequence of labels)
+    # assert a.difference([a.i[[1]]]).equals(expected)
+
+    # 2) with duplicate labels
+    a = Axis('a=a0,a1,a0,a2')
+
+    # 2.a) remove a non-duplicated label (a1)
+    expected = Axis('a=a0,a0,a2')
+    assert a.difference('a1').equals(expected)
+    assert a.difference(a['a1']).equals(expected)
+    assert a.difference(a[['a1']]).equals(expected)
+    assert a.difference([a['a1']]).equals(expected)
+    assert a.difference(a.i[1]).equals(expected)
+    assert a.difference(a.i[[1]]).equals(expected)
+    # assert a.difference([a.i[1]]).equals(expected)
+
+    # 2.b) remove all instance of the duplicated label (a0)
+    expected = Axis('a=a1,a2')
+    assert a.difference('a0').equals(expected)
+    assert a.difference(a['a0']).equals(expected)
+    assert a.difference(a[['a0']]).equals(expected)
+    assert a.difference([a['a0']]).equals(expected)
+
+    # TODO: it should be possible to remove a particular instance of
+    #       a duplicate label, but this is a larger issue (see #438)
+    # 2.c) remove a particular (the second) instance of the duplicated label (a0)
+
+    # 2.c.1) the first one
+    # expected = Axis('a=a1,a0,a2')
+    # assert a.difference(a.i[0]).equals(expected)
+    # assert a.difference(a.i[[0]]).equals(expected)
+
+    # 2.c.2) the second one
+    # expected = Axis('a=a0,a1,a2')
+    # assert a.difference(a.i[2]).equals(expected)
+    # assert a.difference(a.i[[2]]).equals(expected)
+
+    # 3) integer labels
+    a = Axis('a=1,2,3')
+    assert a.difference(2).equals(Axis('a=1,3'))
+    assert a.difference('2').equals(Axis('a=1,2,3'))
+    assert a.difference('..2').equals(Axis('a=3'))
+
+
+def test_intersection():
+    # 1) axis without duplicate label
+    a = Axis('a=a0..a2')
+
+    # intersection with a single label (a1)
+    expected = Axis('a=a1')
+    assert a.intersection('a1').equals(expected)
+    assert a.intersection(a['a1,']).equals(expected)
+    assert a.intersection(a[['a1']]).equals(expected)
+    assert a.intersection([a['a1']]).equals(expected)
+    # Ideally, this should raise an Exception because this is not a sequence
+    # of labels (it is a sequence of sequences of labels) instead of silently
+    # giving the wrong result, but I am unsure the check is worth the
+    # performance loss
+    # assert a.difference([a[['a1']]]).equals(expected)
+    assert a.intersection(a.i[1]).equals(expected)
+    assert a.intersection(a.i[[1]]).equals(expected)
+    # this silently fails and should probably work?
+    # assert a.difference([a.i[1]]).equals(expected)
+    # this should raise (not a sequence of labels)
+    # assert a.difference([a.i[[1]]]).equals(expected)
+
+    # 2) axis with duplicate labels
+    a = Axis('a=a0,a1,a0,a2')
+
+    # 2.a) intersection with a non-duplicated label (a1)
+    expected = Axis('a=a1')
+    assert a.intersection('a1').equals(expected)
+    assert a.intersection(a['a1']).equals(expected)
+    assert a.intersection(a[['a1']]).equals(expected)
+    assert a.intersection([a['a1']]).equals(expected)
+    assert a.intersection(a.i[1]).equals(expected)
+    assert a.intersection(a.i[[1]]).equals(expected)
+    # assert a.intersection([a.i[1]]).equals(expected)
+
+    # 2.b) intersection with an unspecified duplicated label (a0)
+    expected = Axis('a=a0,a0')
+    assert a.intersection('a0').equals(expected)
+    assert a.intersection(a['a0']).equals(expected)
+    assert a.intersection(a[['a0']]).equals(expected)
+    assert a.intersection([a['a0']]).equals(expected)
+
+    # TODO: it should be possible to intersect with particular instance(s) of
+    #       a duplicate label, but this is a larger issue (see #438)
+    # 2.c) intersection with one particular instance of a duplicated label (a0)
+
+    # 3) integer labels
+    a = Axis('a=1,2,3')
+    assert a.intersection(2).equals(Axis('a=2'))
+    # single int strings are not parsed as integers
+    assert a.intersection('2').equals(Axis([], 'a'))
+    assert a.intersection('..2').equals(Axis('a=1,2'))
+
+
+def test_union():
+    # 1) axis without duplicate label
+    a = Axis('a=a0..a2')
+    a2 = Axis('a2=a0..a5')
+
+    # intersection with a single label (a1)
+    expected = Axis('a=a0..a3')
+    assert a.union('a3').equals(expected)
+    assert a.union(a2['a3,']).equals(expected)
+    assert a.union(a2[['a3']]).equals(expected)
+    assert a.union([a2['a3']]).equals(expected)
+    # Ideally, this should raise an Exception because this is not a sequence
+    # of labels (it is a sequence of sequences of labels) instead of silently
+    # giving the wrong result, but I am unsure the check is worth the
+    # performance loss
+    # assert a.union([a2[['a3']]]).equals(expected)
+    assert a.union(a2.i[3]).equals(expected)
+    assert a.union(a2.i[[3]]).equals(expected)
+    # this silently fails and should probably work?
+    # assert a.union([a2.i[3]]).equals(expected)
+    # this should raise (not a sequence of labels)
+    # assert a.union([a2.i[[3]]]).equals(expected)
+
+    # 2) axis with duplicate labels
+    a = Axis('a=a0,a1,a0,a2')
+
+    # union drops duplicates
+    expected = Axis('a=a0,a1,a2,a3')
+    assert a.union('a3').equals(expected)
+    assert a.union(a2['a3']).equals(expected)
+    assert a.union(a2[['a3']]).equals(expected)
+    assert a.union([a2['a3']]).equals(expected)
+    assert a.union(a2.i[3]).equals(expected)
+    assert a.union(a2.i[[3]]).equals(expected)
+
+    # 3) integer labels
+    a = Axis('a=1,2,3')
+    assert a.union(2).equals(a)
+    assert a.union(4).equals(Axis('a=1..4'))
+    # single int strings are not parsed as integers
+    assert a.union('2').equals(Axis([1, 2, 3, '2'], 'a'))
+    assert a.union('4').equals(Axis([1, 2, 3, '4'], 'a'))
+    assert a.union('..2').equals(Axis([1, 2, 3, 0], 'a'))
 
 
 def test_iter():
@@ -541,7 +703,7 @@ def test_h5_io(tmp_path):
     lipro2 = read_hdf(fpath, key=lipro.name)
     assert lipro.equals(lipro2)
     # anonymous axis
-    with pytest.raises(ValueError, match="Argument key must be provided explicitly in case of anonymous axis"):
+    with must_raise(ValueError, msg="Argument key must be provided explicitly in case of anonymous axis"):
         anonymous.to_hdf(fpath)
     # wildcard axis
     wildcard.to_hdf(fpath)

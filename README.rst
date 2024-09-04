@@ -73,8 +73,8 @@ Once you have satisfied the requirements detailed below, simply run::
 Required Dependencies
 ---------------------
 
-- Python 3.7, 3.8 or 3.9
-- `numpy <http://www.numpy.org/>`__ (1.13 or later)
+- Python 3.8, 3.9, 3.10, 3.11 or 3.12
+- `numpy <http://www.numpy.org/>`__ (1.22 or later)
 - `pandas <http://pandas.pydata.org/>`__ (0.20 or later)
 
 
@@ -111,16 +111,15 @@ For Graphical User Interface
 
 LArray includes a graphical user interface to view, edit and compare arrays.
 
-- `pyqt <https://riverbankcomputing.com/software/pyqt/intro>`__ (4 or 5):
+- `pyqt <https://riverbankcomputing.com/software/pyqt/intro>`__ (version 5):
   required by `larray-editor` (see below).
 - `pyside <https://wiki.qt.io/PySide>`__:
   alternative to PyQt.
 - `qtpy <https://github.com/spyder-ide/qtpy>`__:
   required by `larray-editor`.
-  Provides support for PyQt5, PyQt4 and PySide using the PyQt5 layout.
 - `larray-editor <https://github.com/larray-project/larray-editor>`__:
   required to use the graphical user interface associated with larray.
-  It assumes that `qtpy` and `pyqt` or `pyside` are installed.
+  It assumes that `qtpy` and either `pyqt` or `pyside` are installed.
   On windows, creates also a menu ``LArray`` in the Windows Start Menu.
 
 For plotting

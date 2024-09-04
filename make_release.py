@@ -11,7 +11,8 @@ import sys
 from os.path import abspath, dirname, join
 from subprocess import check_call
 
-from releaser import make_release, update_feedstock, short, no, chdir, set_config, insert_step_func, yes
+from releaser import make_release, update_feedstock, short, chdir, insert_step_func, yes
+from releaser.utils import prepare_outlook_email
 from releaser.make_release import steps_funcs as make_release_steps
 from releaser.update_feedstock import steps_funcs as update_feedstock_steps
 
@@ -21,7 +22,8 @@ PACKAGE_NAME = "larray"
 SRC_CODE = "larray"
 SRC_DOC = join('doc', 'source')
 GITHUB_REP = "https://github.com/larray-project/larray"
-CONDA_FEEDSTOCK_REP = "https://github.com/larray-project/larray-feedstock.git"
+UPSTREAM_CONDAFORGE_FEEDSTOCK_REP = "https://github.com/conda-forge/larray-feedstock.git"
+ORIGIN_CONDAFORGE_FEEDSTOCK_REP = "https://github.com/larray-project/larray-feedstock.git"
 CONDA_BUILD_ARGS = {'--user': 'larray-project'}
 
 LARRAY_READTHEDOCS = "http://larray.readthedocs.io/en/stable/"
@@ -40,8 +42,8 @@ def update_metapackage(local_repository, release_name, public_release=True, **ex
     print(f'Updating larrayenv metapackage to version {version}')
     dependencies = [
         f'larray =={version}', f'larray-editor =={version}', f'larray_eurostat =={version}', 
-        'qtconsole', 'matplotlib', 'pyqt', 'qtpy', 'pytables', 'pydantic',
-        'xlsxwriter', 'xlrd', 'xlwt', 'openpyxl', 'xlwings',
+        'qtconsole', 'matplotlib', 'pyqt', 'qtpy', 'pytables', 'pydantic ==1.*',
+        'xlsxwriter', 'xlrd', 'openpyxl', 'xlwings',
     ]
     check_call([
         'conda', 'metapackage', 'larrayenv', version,
@@ -78,13 +80,11 @@ insert_step_func(merge_changelogs, msg='append changelogs from larray-editor pro
 
 # TODO : move to larrayenv project
 def announce_new_release(release_name):
-    import win32com.client as win32
-    version = short(release_name)
-    outlook = win32.Dispatch('outlook.application')
-    mail = outlook.CreateItem(0)
-    mail.To = LARRAY_ANNOUNCE_MAILING_LIST
-    mail.Subject = f"LArray {version} released"
-    mail.Body = f"""\
+    version=short(release_name)
+    prepare_outlook_email(
+        to=LARRAY_ANNOUNCE_MAILING_LIST,
+        subject=f"LArray {version} released",
+        body = f"""\
 Hello all, 
 
 We are pleased to announce that version {version} of LArray is now available. 
@@ -96,8 +96,7 @@ The complete description of changes including examples can be found at:
 
 As always, *any* feedback is very welcome, preferably on the larray-users 
 mailing list: {LARRAY_USERS_GROUP} (you need to register to be able to post).
-"""
-    mail.Display(True)
+""")
 
 
 if __name__ == '__main__':
@@ -130,7 +129,8 @@ Usage:
         if yes("Is metapackage larrayenv updated?", default='n'):
             announce_new_release(argv[2])
     elif argv[1] == '-c' or argv[1] == '--conda':
-        update_feedstock(GITHUB_REP, CONDA_FEEDSTOCK_REP, SRC_CODE, *argv[2:], tmp_dir=TMP_PATH_CONDA)
+        update_feedstock(GITHUB_REP, UPSTREAM_CONDAFORGE_FEEDSTOCK_REP, ORIGIN_CONDAFORGE_FEEDSTOCK_REP,
+                         SRC_CODE, *argv[2:], tmp_dir=TMP_PATH_CONDA)
     else:
         make_release(local_repository, PACKAGE_NAME, SRC_CODE, *argv[1:], src_documentation=SRC_DOC, tmp_dir=TMP_PATH,
                      conda_build_args=CONDA_BUILD_ARGS)

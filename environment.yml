@@ -2,15 +2,11 @@ name: test
 channels:
   - defaults
 dependencies:
-  - pip
-  - numpy>=1.13
-  - pandas>=0.20
+  - numpy >=1.13
+  - pandas >=0.20
   - pytables
   - matplotlib
   - openpyxl
   - xlsxwriter
-  - pytest>=3.5
-  - flake8
-  - pydantic
-  - pip:
-    - pytest-flake8
+  - pytest >=6
+  - pydantic ==1.*

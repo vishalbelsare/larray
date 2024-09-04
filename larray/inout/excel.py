@@ -11,7 +11,7 @@ try:
 except ImportError:
     xlsxwriter = None
 
-from typing import List, Tuple
+from typing import Dict
 
 from larray.core.array import Array, asarray
 from larray.core.constants import nan
@@ -34,7 +34,7 @@ __all__ = ['read_excel']
 def read_excel(filepath, sheet=0, nb_axes=None, index_col=None, fill_value=nan, na=nan,
                sort_rows=False, sort_columns=False, wide=True, engine=None, range=slice(None), **kwargs) -> Array:
     r"""
-    Reads excel file from sheet name and returns an Array with the contents
+    Read excel file from sheet name and returns an Array with the contents.
 
     Parameters
     ----------
@@ -233,8 +233,6 @@ class PandasExcelHandler(FileHandler):
     r"""
     Handler for Excel files using Pandas.
     """
-    def __init__(self, fname, overwrite_file=False):
-        super().__init__(fname, overwrite_file)
 
     def _open_for_read(self):
         self.handle = pd.ExcelFile(self.fname)
@@ -243,8 +241,8 @@ class PandasExcelHandler(FileHandler):
         engine = 'xlsxwriter' if (self.fname.suffix == '.xlsx' and xlsxwriter is not None) else None
         self.handle = pd.ExcelWriter(self.fname, engine=engine)
 
-    def list_items(self) -> List[Tuple[str, str]]:
-        return [(name, 'Array') for name in self.handle.sheet_names if name != '__metadata__']
+    def item_types(self) -> Dict[str, str]:
+        return {name: 'Array' for name in self.handle.sheet_names if name != '__metadata__'}
 
     def _read_item(self, key, type, *args, **kwargs) -> Array:
         if type == 'Array':
@@ -285,8 +283,6 @@ class XLWingsHandler(FileHandler):
     r"""
     Handler for Excel files using XLWings.
     """
-    def __init__(self, fname, overwrite_file=False):
-        super().__init__(fname, overwrite_file)
 
     def _get_original_file_name(self):
         # for XLWingsHandler, no need to create a temporary file, the job is already done in the Workbook class
@@ -298,8 +294,8 @@ class XLWingsHandler(FileHandler):
     def _open_for_write(self):
         self.handle = open_excel(self.fname, overwrite_file=self.overwrite_file)
 
-    def list_items(self) -> List[Tuple[str, str]]:
-        return [(name, 'Array') for name in self.handle.sheet_names() if name != '__metadata__']
+    def item_types(self) -> Dict[str, str]:
+        return {name: 'Array' for name in self.handle.sheet_names() if name != '__metadata__'}
 
     def _read_item(self, key, type, *args, **kwargs) -> Array:
         if type == 'Array':

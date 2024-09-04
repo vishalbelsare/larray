@@ -52,6 +52,7 @@ class Metadata(AttributeDict):
 
     >>> del arr.meta.creation_date
     """
+
     def __larray__(self):
         from larray.core.array import stack
         return stack(self.items(), axes='metadata')
@@ -66,12 +67,19 @@ class Metadata(AttributeDict):
         from pandas import to_numeric, to_datetime
 
         def _convert_value(value):
-            value = to_numeric([value], errors='ignore')[0]
-            if isinstance(value, str):
-                value = to_datetime(value, errors='ignore', infer_datetime_format=True)
+            # first try converting to a number ...
+            try:
+                value = to_numeric(value)
+            except (ValueError, TypeError):
+                # ... if that failed try converting to a datetime ...
+                try:
+                    value = to_datetime(value)
+                except (ValueError, TypeError):
+                    # ... and if that failed too, keep the original value (probably a string)
+                    pass
             return value
 
-        return Metadata([(key, _convert_value(value)) for key, value in zip(array.axes.labels[0], array.data)])
+        return Metadata({key: _convert_value(value) for key, value in zip(array.axes[0].labels, array.data)})
 
     # ---------- IO methods ----------
     def to_hdf(self, hdfstore, key=None):

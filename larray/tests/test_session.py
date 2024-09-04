@@ -8,8 +8,8 @@ import pandas as pd
 import pytest
 
 from larray.tests.common import meta
-from larray.tests.common import (assert_array_nan_equal, inputpath,
-                                 needs_xlwings, needs_pytables, needs_openpyxl, must_warn)
+from larray.tests.common import (assert_larray_equal, assert_array_nan_equal, inputpath,
+                                 needs_xlwings, needs_pytables, needs_openpyxl, must_warn, must_raise)
 from larray.inout.common import _supported_scalars_types
 from larray import (Session, Axis, Array, Group, isnan, zeros_like, ndtest, ones_like,
                     ones, full, full_like, stack, local_arrays, global_arrays, arrays, CheckedSession)
@@ -59,12 +59,12 @@ k = ndtest((3, 3))
 
 @pytest.fixture()
 def session():
-    return Session([('b', b), ('b024', b024), ('a', a), ('a2', a2), ('anonymous', anonymous),
-                    ('a01', a01), ('ano01', ano01), ('c', c), ('d', d), ('e', e), ('g', g), ('f', f), ('h', h)])
+    return Session({'b': b, 'b024': b024, 'a': a, 'a2': a2, 'anonymous': anonymous,
+                    'a01': a01, 'ano01': ano01, 'c': c, 'd': d, 'e': e, 'g': g, 'f': f, 'h': h})
 
 
 def test_init_session(meta):
-    s = Session(b, b024, a, a01, a2=a2, anonymous=anonymous, ano01=ano01, c=c, d=d, e=e, g=g, f=f, h=h)
+    s = Session(b=b, b024=b024, a=a, a01=a01, a2=a2, anonymous=anonymous, ano01=ano01, c=c, d=d, e=e, g=g, f=f, h=h)
     assert list(s.keys()) == ['b', 'b024', 'a', 'a01', 'a2', 'anonymous', 'ano01', 'c', 'd', 'e', 'g', 'f', 'h']
 
     # TODO: format auto-detection does not work in this case
@@ -72,7 +72,8 @@ def test_init_session(meta):
     # assert list(s.keys()) == ['e', 'f', 'g']
 
     # metadata
-    s = Session(b, b024, a, a01, a2=a2, anonymous=anonymous, ano01=ano01, c=c, d=d, e=e, f=f, g=g, h=h, meta=meta)
+    s = Session(b=b, b024=b024, a=a, a01=a01, a2=a2, anonymous=anonymous, ano01=ano01, c=c, d=d, e=e, f=f, g=g, h=h,
+                meta=meta)
     assert s.meta == meta
 
 
@@ -151,10 +152,20 @@ def test_setattr(session):
 def test_add(session):
     i = Axis('i=i0..i2')
     i01 = i['i0,i1'] >> 'i01'
-    expected_warnings = 3 if isinstance(session, CheckedSession) else 0
-    with must_warn(UserWarning, match=r"'\w+' is not declared in 'CheckedSessionExample'",
-                   num_expected=expected_warnings):
+    with must_warn((UserWarning, FutureWarning), match='.*', num_expected=None) as caught_warnings:
         session.add(i, i01, j='j')
+
+    future_warnings = [w for w in caught_warnings if w.category is FutureWarning]
+    assert len(future_warnings) == 1
+    # .message is the w object itself, .message.args[0] is the actual message
+    assert future_warnings[0].message.args[0] == "Session.add() is deprecated. Please use Session.update() instead."
+
+    if isinstance(session, CheckedSession):
+        user_warnings = [w for w in caught_warnings if w.category is UserWarning]
+        assert len(user_warnings) == 3
+        assert all(re.match(r"'\w+' is not declared in 'CheckedSessionExample'", w.message.args[0])
+                   for w in user_warnings)
+
     assert i.equals(session.i)
     assert i01 == session.i01
     assert session.j == 'j'
@@ -184,8 +195,8 @@ def test_names(session):
     assert session.names == ['a', 'a01', 'a2', 'ano01', 'anonymous', 'b', 'b024',
                              'c', 'd', 'e', 'f', 'g', 'h']
     # add them in the "wrong" order
-    session.add(j='j')
-    session.add(i='i')
+    session['j'] = 'j'
+    session['i'] = 'i'
     assert session.names == ['a', 'a01', 'a2', 'ano01', 'anonymous', 'b', 'b024',
                              'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']
 
@@ -263,12 +274,11 @@ def _add_scalars_to_session(s):
 def test_h5_io(tmp_path, session, meta):
     session = _add_scalars_to_session(session)
 
-    msg = "\nyour performance may suffer as PyTables will pickle object types"
-    regex = re.compile(msg, flags=re.MULTILINE)
-
     # for some reason the PerformanceWarning is not detected as such, so this does not work:
-    # with pytest.warns(tables.PerformanceWarning):
-    with pytest.warns(Warning, match=regex):
+    # with must_warn(tables.PerformanceWarning, ...):
+    # cannot use check_file=True because of the extra level from _test_io
+    with must_warn(Warning, match="^\nyour performance may suffer as PyTables will pickle object types that .*",
+                   num_expected=4, check_file=False):
         _test_io(tmp_path, session, meta, engine='pandas_hdf', ext='h5')
 
 
@@ -283,9 +293,8 @@ def test_xlsx_xlwings_io(tmp_path, session, meta):
 
 
 def test_csv_io(tmp_path, session, meta):
+    fpath = _test_io(tmp_path, session, meta, engine='pandas_csv', ext='csv')
     try:
-        fpath = _test_io(tmp_path, session, meta, engine='pandas_csv', ext='csv')
-
         names = Session({k: v for k, v in session.items() if isinstance(v, Array)}).names
 
         # test loading with a pattern
@@ -300,7 +309,8 @@ def test_csv_io(tmp_path, session, meta):
             f.write(',",')
 
         # try loading the directory with the invalid file
-        with pytest.raises(pd.errors.ParserError):
+        # we do not try to validate the exact Pandas error message
+        with must_raise(pd.errors.ParserError, match='.*'):
             s = Session(pattern)
 
         # test loading a pattern, ignoring invalid/unsupported files
@@ -357,7 +367,7 @@ def test_to_globals(session):
 
 def test_element_equals(session):
     session_cls = session.__class__
-    other_session = session_cls([(key, value) for key, value in session.items()])
+    other_session = session_cls(session)
 
     keys = [key for key, value in session.items() if isinstance(value, (Axis, Group, Array))]
     expected_res = full(Axis(keys, 'name'), fill_value=True, dtype=bool)
@@ -374,7 +384,7 @@ def test_element_equals(session):
         expected_res[deleted_key] = False
     # add one item
     expected_warnings = 1 if isinstance(other_session, CheckedSession) else 0
-    with must_warn(UserWarning, match=r"'k' is not declared in 'CheckedSessionExample'",
+    with must_warn(UserWarning, msg="'k' is not declared in 'CheckedSessionExample'",
                    num_expected=expected_warnings):
         other_session['k'] = k
     expected_res = expected_res.append('name', False, label='k')
@@ -401,7 +411,7 @@ def to_boolean_array_eq(res):
 
 def test_eq(session):
     session_cls = session.__class__
-    other_session = session_cls([(key, value) for key, value in session.items()])
+    other_session = session_cls(session)
     expected_res = full(Axis(list(session.keys()), 'name'), fill_value=True, dtype=bool)
 
     # ====== same sessions ======
@@ -414,7 +424,7 @@ def test_eq(session):
     del other_session['g']
     expected_res['g'] = False
     expected_warnings = 1 if isinstance(other_session, CheckedSession) else 0
-    with must_warn(UserWarning, match=r"'k' is not declared in 'CheckedSessionExample'",
+    with must_warn(UserWarning, msg="'k' is not declared in 'CheckedSessionExample'",
                    num_expected=expected_warnings):
         other_session['k'] = k
     expected_res = expected_res.append('name', False, label='k')
@@ -457,7 +467,7 @@ def test_ne(session):
     del other_session['g']
     expected_res['g'] = True
     expected_warnings = 1 if isinstance(other_session, CheckedSession) else 0
-    with must_warn(UserWarning, match=r"'k' is not declared in 'CheckedSessionExample'",
+    with must_warn(UserWarning, msg="'k' is not declared in 'CheckedSessionExample'",
                    num_expected=expected_warnings):
         other_session['k'] = k
     expected_res = expected_res.append('name', True, label='k')
@@ -516,8 +526,8 @@ def test_sub(session):
 
     # session - array
     axes = [a, b]
-    other = Session([('a', a), ('a01', a01), ('c', c), ('e', ndtest((a, b))),
-                     ('f', full((a, b), fill_value=3)), ('g', ndtest('c=c0..c2'))])
+    other = Session({'a': a, 'a01': a01, 'c': c, 'e': ndtest((a, b)),
+                     'f': full((a, b), fill_value=3), 'g': ndtest('c=c0..c2')})
     diff = other - ones(axes)
     assert_array_nan_equal(diff['e'], other['e'] - ones(axes))
     assert_array_nan_equal(diff['f'], other['f'] - ones(axes))
@@ -609,24 +619,24 @@ def test_local_arrays():
 
     # exclude private local arrays
     s = local_arrays()
-    s_expected = Session([('h', h)])
+    s_expected = Session({'h': h})
     assert s.equals(s_expected)
 
     # all local arrays
     s = local_arrays(include_private=True)
-    s_expected = Session([('h', h), ('_h', _h)])
+    s_expected = Session({'h': h, '_h': _h})
     assert s.equals(s_expected)
 
 
 def test_global_arrays():
     # exclude private global arrays
     s = global_arrays()
-    s_expected = Session([('e', e), ('f', f), ('g', g), ('h', h), ('k', k)])
+    s_expected = Session({'e': e, 'f': f, 'g': g, 'h': h, 'k': k})
     assert s.equals(s_expected)
 
     # all global arrays
     s = global_arrays(include_private=True)
-    s_expected = Session([('e', e), ('_e', _e), ('f', f), ('g', g), ('h', h), ('k', k)])
+    s_expected = Session({'e': e, '_e': _e, 'f': f, 'g': g, 'h': h, 'k': k})
     assert s.equals(s_expected)
 
 
@@ -636,13 +646,46 @@ def test_arrays():
 
     # exclude private arrays
     s = arrays()
-    s_expected = Session([('e', e), ('f', f), ('g', g), ('h', h), ('i', i), ('k', k)])
+    s_expected = Session({'e': e, 'f': f, 'g': g, 'h': h, 'i': i, 'k': k})
     assert s.equals(s_expected)
 
     # all arrays
     s = arrays(include_private=True)
-    s_expected = Session([('_e', _e), ('_i', _i), ('e', e), ('f', f), ('g', g), ('h', h), ('i', i), ('k', k)])
+    s_expected = Session({'_e': _e, '_i': _i, 'e': e, 'f': f, 'g': g, 'h': h, 'i': i, 'k': k})
     assert s.equals(s_expected)
+
+
+def test_stack():
+    # stacking all arrays of a single session
+    # =======================================
+    # a) using explicit axis
+    s = Session(arr1=ndtest(3), arr2=ndtest(3) + 10)
+    axis = Axis("array=arr2,arr1")
+    res = stack(s, axis)
+    expected = stack(arr1=s.arr1, arr2=s.arr2, axes=axis)
+    assert_larray_equal(res, expected)
+
+    # b) using explicit axis name
+    s = Session(arr1=ndtest(3), arr2=ndtest(3) + 10)
+    res = stack(s, "array")
+    expected = stack(arr1=s.arr1, arr2=s.arr2, axes="array")
+    assert_larray_equal(res, expected)
+
+    # c) using not axis information
+    s = Session(arr1=ndtest(3), arr2=ndtest(3) + 10)
+    res = stack(s)
+    expected = stack(arr1=s.arr1, arr2=s.arr2)
+    assert_larray_equal(res, expected)
+
+    # stacking two sessions (it will stack all arrays with corresponding names
+    s1 = Session(arr1=ndtest(3), arr2=ndtest(3) + 10)
+    s2 = Session(arr1=ndtest(3), arr2=ndtest(3) + 30)
+    expected_arr1 = stack(s1=s1.arr1, s2=s2.arr1, axes="session")
+    expected_arr2 = stack(s1=s1.arr2, s2=s2.arr2, axes="session")
+    res = stack(s1=s1, s2=s2, axes="session")
+    assert isinstance(res, Session)
+    assert_larray_equal(res.arr1, expected_arr1)
+    assert_larray_equal(res.arr2, expected_arr2)
 
 
 if __name__ == "__main__":

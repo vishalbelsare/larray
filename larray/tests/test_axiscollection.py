@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from larray.tests.common import assert_array_equal, assert_axis_eq
+from larray.tests.common import assert_array_equal, assert_axis_eq, must_raise
 from larray import Axis, AxisCollection
 
 
@@ -196,32 +196,32 @@ def test_replace(col):
 
 def test_contains(col):
     assert 'lipro' in col
-    assert not ('nonexisting' in col)
+    assert 'nonexisting' not in col
     assert 0 in col
     assert 1 in col
     assert 2 in col
     assert -1 in col
     assert -2 in col
     assert -3 in col
-    assert not (3 in col)
+    assert 3 not in col
     assert lipro in col
     assert sex in col
     assert age in col
     assert sex2 in col
-    assert not (geo in col)
-    assert not (value in col)
+    assert geo not in col
+    assert value not in col
     anon = Axis([0, 1])
     col.append(anon)
     assert anon in col
     anon2 = anon.copy()
     assert anon2 in col
     anon3 = Axis([0, 2])
-    assert not (anon3 in col)
+    assert anon3 not in col
 
 
 def test_index(col):
     assert col.index('lipro') == 0
-    with pytest.raises(ValueError):
+    with must_raise(ValueError, msg="'nonexisting' is not in list"):
         col.index('nonexisting')
         assert col.index(0) == 0
     assert col.index(1) == 1
@@ -229,7 +229,7 @@ def test_index(col):
     assert col.index(-1) == -1
     assert col.index(-2) == -2
     assert col.index(-3) == -3
-    with pytest.raises(ValueError):
+    with must_raise(ValueError, msg='axis 3 is not in collection'):
         col.index(3)
 
     # objects actually in col
@@ -237,9 +237,9 @@ def test_index(col):
     assert col.index(sex) == 1
     assert col.index(age) == 2
     assert col.index(sex2) == 1
-    with pytest.raises(ValueError):
+    with must_raise(ValueError, msg="'geo' is not in list"):
         col.index(geo)
-    with pytest.raises(ValueError):
+    with must_raise(ValueError, msg="'value' is not in list"):
         col.index(value)
 
     # test anonymous axes
@@ -249,7 +249,7 @@ def test_index(col):
     anon2 = anon.copy()
     assert col.index(anon2) == 3
     anon3 = Axis([0, 2])
-    with pytest.raises(ValueError):
+    with must_raise(ValueError, msg='Axis([0, 2], None) is not in collection'):
         col.index(anon3)
 
 
@@ -292,7 +292,11 @@ def test_add(col):
     assert col2 == col
     new = col2 + [Axis('geo=A11,A12,A13'), Axis('age=0..7')]
     assert new == [lipro, sex, age, geo]
-    with pytest.raises(ValueError):
+    msg = """incompatible axes:
+Axis([0, 1, 2, 3, 4, 5, 6], 'age')
+vs
+Axis([0, 1, 2, 3, 4, 5, 6, 7], 'age')"""
+    with must_raise(ValueError, msg=msg):
         col2 + [Axis('geo=A11,A12,A13'), Axis('age=0..6')]
 
     # 2) other AxisCollection
@@ -368,6 +372,15 @@ def test_repr(col):
     Axis(['M', 'F'], 'sex'),
     Axis([0, 1, 2, 3, 4, 5, 6, 7], 'age')
 ])"""
+
+
+def test_setlabels():
+    # test when the label is ambiguous AND the axes are anonymous
+    axes = AxisCollection([Axis("b1,b2"), Axis("b0..b2")])
+    with must_raise(ValueError, msg="""'b1' is ambiguous, it is valid in the following axes:
+ {0} [2]: 'b1' 'b2'
+ {1} [3]: 'b0' 'b1' 'b2'"""):
+        axes.set_labels({'b1': 'b_one'})
 
 
 if __name__ == "__main__":

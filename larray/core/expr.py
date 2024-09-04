@@ -1,8 +1,19 @@
+from larray.core.abstractbases import ABCArray
+
+
 class ExprNode:
+    def __bool__(self):
+        raise ValueError("Cannot evaluate the truth value of an expression using X.axis_name")
+
     # method factory
     def _binop(opname):
         def opmethod(self, other):
-            return BinaryOp(opname, self, other)
+            # evaluate eagerly when possible
+            if isinstance(other, ABCArray):
+                self_value = self.evaluate(other.axes)
+                return getattr(self_value, f'__{opname}__')(other)
+            else:
+                return BinaryOp(opname, self, other)
 
         opmethod.__name__ = f'__{opname}__'
         return opmethod
@@ -56,6 +67,12 @@ class ExprNode:
     __invert__ = _unaryop('invert')
 
     def evaluate(self, context):
+        """
+        Parameters
+        ----------
+        context : AxisCollection
+            Use axes from this collection
+        """
         raise NotImplementedError()
 
 
@@ -76,6 +93,9 @@ class BinaryOp(ExprNode):
         expr2 = expr_eval(self.expr2, context)
         return getattr(expr1, self.opname)(expr2)
 
+    def __repr__(self):
+        return f"BinaryOp({self.opname[2:-2]!r}, {self.expr1!r}, {self.expr2!r})"
+
 
 class UnaryOp(ExprNode):
     def __init__(self, op, expr):
@@ -86,3 +106,6 @@ class UnaryOp(ExprNode):
         # TODO: implement eval via numexpr
         expr = expr_eval(self.expr, context)
         return getattr(expr, self.opname)()
+
+    def __repr__(self):
+        return f"UnaryOp({self.opname[2:-2]!r}, {self.expr!r})"

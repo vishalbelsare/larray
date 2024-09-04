@@ -1,10 +1,14 @@
-import pytest
+from larray.tests.common import must_raise
+
 import larray
 
 
 def test_invalid_option_raises():
-    with pytest.raises(ValueError):
-        larray.set_options(not_a_valid_options=True)
+    msg = "Argument not_a_valid_option is not in the set of valid options: " \
+          "display_edgeitems, display_maxlines, display_precision, " \
+          "display_width"
+    with must_raise(ValueError, msg=msg):
+        larray.set_options(not_a_valid_option=True)
 
 
 def test_set_options_as_global():

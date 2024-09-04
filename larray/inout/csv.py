@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 
-from typing import List, Tuple
+from typing import Dict
 
 from larray.core.array import Array, asarray
 from larray.core.constants import nan
@@ -19,10 +19,10 @@ from larray.example import get_example_filepath         # noqa: F401
 
 
 @deprecate_kwarg('nb_index', 'nb_axes', arg_converter=lambda x: x + 1)
-def read_csv(filepath_or_buffer, nb_axes=None, index_col=None, sep=',', headersep=None, fill_value=nan,
+def read_csv(filepath_or_buffer, nb_axes=None, index_col=None, sep=',', headersep=None, decimal='.', fill_value=nan,
              na=nan, sort_rows=False, sort_columns=False, wide=True, dialect='larray', **kwargs) -> Array:
     r"""
-    Reads csv file and returns an array with the contents.
+    Read csv file and returns an array with the contents.
 
     Parameters
     ----------
@@ -36,9 +36,11 @@ def read_csv(filepath_or_buffer, nb_axes=None, index_col=None, sep=',', headerse
     index_col : list or None, optional
         Positions of columns for the n-1 first axes (ex. [0, 1, 2, 3]). Defaults to None (see nb_axes above).
     sep : str, optional
-        Separator.
+        Separator to use. Defaults to ','.
     headersep : str or None, optional
-        Separator for headers.
+        Specific separator to use for headers. Defaults to None (uses `sep`).
+    decimal : str, optional
+        Character to use as decimal point. Defaults to '.'.
     fill_value : scalar or Array, optional
         Value used to fill cells corresponding to label combinations which are not present in the input.
         Defaults to NaN.
@@ -210,7 +212,7 @@ def read_csv(filepath_or_buffer, nb_axes=None, index_col=None, sep=',', headerse
         if index_col is None:
             index_col = [0]
 
-    df = pd.read_csv(filepath_or_buffer, index_col=index_col, sep=sep, **kwargs)
+    df = pd.read_csv(filepath_or_buffer, index_col=index_col, sep=sep, decimal=decimal, **kwargs)
     if dialect == 'liam2':
         if len(df) == 1:
             df.set_index([[nan]], inplace=True)
@@ -235,7 +237,7 @@ def read_tsv(filepath_or_buffer, **kwargs) -> Array:
 
 
 def read_eurostat(filepath_or_buffer, **kwargs) -> Array:
-    r"""Reads EUROSTAT TSV (tab-separated) file into an array.
+    r"""Read EUROSTAT TSV (tab-separated) file into an array.
 
     EUROSTAT TSV files are special because they use tabs as data separators but comas to separate headers.
 
@@ -260,10 +262,7 @@ class PandasCSVHandler(FileHandler):
         self.sep = sep
         self.axes = None
         self.groups = None
-        if self.fname is None:
-            self.pattern = None
-            self.directory = None
-        elif self.fname.suffix == '.csv' or '*' in self.fname.name or '?' in self.fname.name:
+        if self.fname.suffix == '.csv' or '*' in self.fname.name or '?' in self.fname.name:
             self.pattern = self.fname.name
             self.directory = fname.parent
         else:
@@ -293,12 +292,12 @@ class PandasCSVHandler(FileHandler):
                 if not self.directory.is_dir():
                     raise ValueError(f"Path {self.directory} must represent a directory")
 
-    def list_items(self) -> List[Tuple[str, str]]:
+    def item_types(self) -> Dict[str, str]:
         fnames = self.directory.glob(self.pattern) if self.pattern is not None else []
         # stem = filename without extension
         # FIXME : not sure sorted is required here
         fnames = sorted([fname.stem for fname in fnames])
-        return [(name, 'Array') for name in fnames if name != '__metadata__']
+        return {name: 'Array' for name in fnames if name != '__metadata__'}
 
     def _read_item(self, key, type, *args, **kwargs) -> Array:
         if type == 'Array':

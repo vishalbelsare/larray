@@ -1,12 +1,14 @@
 import re
 import faulthandler
+import shutil
+import tempfile
 from pathlib import Path
 
 import pytest
 import numpy as np
 
-from larray.tests.common import needs_xlwings, needs_pytables, must_warn
-from larray import ndtest, open_excel, asarray, Axis, nan, ExcelReport, read_excel
+from larray.tests.common import needs_xlwings, needs_pytables, must_warn, must_raise
+from larray import ndtest, open_excel, asarray, Array, Axis, nan, ExcelReport, read_excel
 from larray.inout import xw_excel
 from larray.example import load_example_data, EXAMPLE_EXCEL_TEMPLATES_DIR
 
@@ -31,7 +33,8 @@ class TestWorkbook:
         faulthandler_enabled = faulthandler.is_enabled()
         if faulthandler_enabled:
             faulthandler.disable()
-        with pytest.raises(pywintypes.com_error):
+        disconnected_msg = r"The object invoked has disconnected from its clients."
+        with must_raise(pywintypes.com_error, match=rf"\(.*, '{disconnected_msg}', .*\)"):
             wb1.sheet_names()
         if faulthandler_enabled:
             faulthandler.enable()
@@ -45,7 +48,11 @@ class TestWorkbook:
         # anything using wb2 will fail
         if faulthandler_enabled:
             faulthandler.disable()
-        with pytest.raises(pywintypes.com_error):
+        # from xlwings 0.30.2 onward, the message is a "call failed" error, while it was
+        # "disconnected" error in previous versions
+        call_failed_msg = "The remote procedure call failed."
+        error_pattern = fr"\(.*, '({disconnected_msg})|({call_failed_msg})', .*\)"
+        with must_raise(pywintypes.com_error, match=error_pattern):
             wb2.sheet_names()
         if faulthandler_enabled:
             faulthandler.enable()
@@ -55,30 +62,34 @@ class TestWorkbook:
             wb['test'] = 'content'
 
     def test_links(self):
-        data_dir = TEST_DATA_PATH / 'excel_with_links'
-        fpath1 = data_dir / 'BookA.xlsx'
-        fpath2 = data_dir / 'BookB.xlsx'
-        fpath3 = data_dir / 'BookC.xlsx'
-        assert read_excel(fpath1)['link to cell with link to other workbook', 'value from link'] == 4
-        assert read_excel(fpath2)['cell with link to other workbook', 'formula value'] == 4
-        assert read_excel(fpath3).i[0, 0] == 3
+        test_data_dir = TEST_DATA_PATH / 'excel_with_links'
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            tmp_dir = Path(tmp_dir_name)
+            for book in ('BookA.xlsx', 'BookB.xlsx', 'BookC.xlsx'):
+                shutil.copy2(test_data_dir / book, tmp_dir)
+            fpath1 = tmp_dir / 'BookA.xlsx'
+            fpath2 = tmp_dir / 'BookB.xlsx'
+            fpath3 = tmp_dir / 'BookC.xlsx'
+            assert read_excel(fpath1)['link to cell with link to other workbook', 'value from link'] == 4
+            assert read_excel(fpath2)['cell with link to other workbook', 'formula value'] == 4
+            assert read_excel(fpath3).i[0, 0] == 3
 
-        with open_excel(fpath1) as a, open_excel(fpath2) as b, open_excel(fpath3) as c:
-            c[0]['B2'] = 41
-            a.save()
-            b.save()
-            c.save()
-        assert read_excel(fpath1)['link to cell with link to other workbook', 'value from link'] == 42
-        assert read_excel(fpath2)['cell with link to other workbook', 'formula value'] == 42
-        assert read_excel(fpath3).i[0, 0] == 41
-        with open_excel(fpath1) as a, open_excel(fpath2) as b, open_excel(fpath3) as c:
-            c[0]['B2'] = 3
-            a.save()
-            b.save()
-            c.save()
-        assert read_excel(fpath1)['link to cell with link to other workbook', 'value from link'] == 4
-        assert read_excel(fpath2)['cell with link to other workbook', 'formula value'] == 4
-        assert read_excel(fpath3).i[0, 0] == 3
+            with open_excel(fpath1) as a, open_excel(fpath2) as b, open_excel(fpath3) as c:
+                c[0]['B2'] = 41
+                a.save()
+                b.save()
+                c.save()
+            assert read_excel(fpath1)['link to cell with link to other workbook', 'value from link'] == 42
+            assert read_excel(fpath2)['cell with link to other workbook', 'formula value'] == 42
+            assert read_excel(fpath3).i[0, 0] == 41
+            with open_excel(fpath1) as a, open_excel(fpath2) as b, open_excel(fpath3) as c:
+                c[0]['B2'] = 3
+                a.save()
+                b.save()
+                c.save()
+            assert read_excel(fpath1)['link to cell with link to other workbook', 'value from link'] == 4
+            assert read_excel(fpath2)['cell with link to other workbook', 'formula value'] == 4
+            assert read_excel(fpath3).i[0, 0] == 3
 
     def test_repr(self):
         with open_excel(visible=False) as wb:
@@ -96,7 +107,7 @@ class TestWorkbook:
             assert isinstance(sheet, xw_excel.Sheet)
             assert sheet.name == 'Sheet1'
 
-            with pytest.raises(KeyError, match="Workbook has no sheet named this_sheet_does_not_exist"):
+            with must_raise(KeyError, msg="'Workbook has no sheet named this_sheet_does_not_exist'"):
                 _ = wb['this_sheet_does_not_exist']
 
     def test_setitem(self):
@@ -121,9 +132,18 @@ class TestWorkbook:
             assert wb.sheet_names() == ['sheet1', 'sheet2', 'sheet3']
             assert wb['sheet2']['A1'].value == 'sheet1 content'
 
+            # reset sheet 3 content (for next test)
+            wb['sheet3'] = 'sheet3 content'
+            assert wb['sheet3']['A1'].value == 'sheet3 content'
+
+            # sheet did exist, Sheet value (int key)
+            wb[1] = wb['sheet3']
+            assert wb.sheet_names() == ['sheet1', 'sheet3 (2)', 'sheet3']
+            assert wb[1]['A1'].value == 'sheet3 content'
+
             with open_excel(visible=False, app="new") as wb2:
                 assert wb.app != wb2.app
-                with pytest.raises(ValueError, match="cannot copy a sheet from one instance of Excel to another"):
+                with must_raise(ValueError, msg="cannot copy a sheet from one instance of Excel to another"):
                     wb2['sheet1'] = wb['sheet1']
 
             # group key
@@ -172,8 +192,9 @@ class TestSheet:
             obj_arr_dump = obj_arr.dump()
             # [['a\\b', 'b0', 'b1', 'b2'], ['a0', 0, nan, 2], ['a1', 3, 4, 5]]
 
-            # float and *not* np.float64, otherwise it gets converted to 65535 when written to Excel
-            assert type(obj_arr_dump[1][2]) is float
+            # float and *not* np.float64 (which inherits from float), otherwise it gets
+            # converted to 65535 when written to Excel
+            assert type(obj_arr_dump[1][2]) is float  # noqa: E721
 
             sheet['A12'] = obj_arr_dump
 
@@ -191,6 +212,10 @@ class TestSheet:
     def test_asarray(self):
         with open_excel(visible=False) as wb:
             sheet = wb[0]
+
+            # empty sheet
+            res = asarray(sheet)
+            assert res.equals(Array(None))
 
             arr1 = ndtest((2, 3))
             # no header so that we have an uniform dtype for the whole sheet
@@ -227,6 +252,17 @@ class TestSheet:
 
 @needs_xlwings
 class TestRange:
+    def test_get_and_set_item(self):
+        arr = ndtest((4, 5))
+
+        with open_excel(visible=False) as wb:
+            sheet = wb[0]
+            sheet['A1'] = arr
+            rng = sheet['B1:D3']
+            sliced_rng = rng[1:3, :2]
+            assert sliced_rng.shape == (2, 2)
+            asarray(sliced_rng).equals(Array([[6, 7], [11, 12]]))
+
     def test_scalar_convert(self):
         with open_excel(visible=False) as wb:
             sheet = wb[0]
@@ -248,7 +284,7 @@ class TestRange:
             rng = sheet['A3']
             assert int(rng) == 1
             assert float(rng) == 1.5
-            with pytest.raises(TypeError, match="only integer scalars can be converted to a scalar index"):
+            with must_raise(TypeError, msg="only integer scalars can be converted to a scalar index"):
                 rng.__index__()
 
     def test_asarray(self):
@@ -256,7 +292,7 @@ class TestRange:
             sheet = wb[0]
 
             arr1 = ndtest((2, 3))
-            # no header so that we have an uniform dtype for the whole sheet
+            # dump only the data (no labels/headers) so that we have an uniform dtype for the whole sheet
             sheet['A1'] = arr1
             res1 = np.asarray(sheet['A1:C2'])
             assert np.array_equal(res1, arr1.data)
@@ -315,8 +351,7 @@ def test_excel_report_setting_template():
     # test setting template dir
     # 1) wrong template dir
     wrong_template_dir = r"C:\Wrong\Directory\Path"
-    msg = f"The directory {wrong_template_dir} could not be found"
-    with pytest.raises(ValueError, match=re.escape(msg)):
+    with must_raise(ValueError, msg=f"The directory {wrong_template_dir} could not be found."):
         excel_report.template_dir = wrong_template_dir
     # 2) correct path
     excel_report.template_dir = EXAMPLE_EXCEL_TEMPLATES_DIR
@@ -326,7 +361,7 @@ def test_excel_report_setting_template():
     # 1) wrong extension
     template_file = 'wrong_extension.txt'
     msg = "Extension for the excel template file must be '.crtx' instead of .txt"
-    with pytest.raises(ValueError, match=re.escape(msg)):
+    with must_raise(ValueError, msg=msg):
         excel_report.template = template_file
     # 2) add .crtx extension if no extension
     template_name = 'Line'
@@ -416,7 +451,7 @@ def test_excel_report_arrays():
     # 1) pass a not registered kind of item
     item_type = 'unknown_item'
     msg = f"Item type {item_type} is not registered. Please choose in list ['graph', 'title']"
-    with pytest.raises(ValueError, match=re.escape(msg)):
+    with must_raise(ValueError, msg=msg):
         sheet_graphs.set_item_default_size(item_type, width, height)
     # 2) update default size for graphs
     sheet_graphs.set_item_default_size('graph', width, height)

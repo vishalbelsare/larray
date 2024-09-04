@@ -1,10 +1,82 @@
 ﻿Change log
 ##########
 
+Version 0.34.6
+==============
+
+Released on 2024-08-01.
+
+EDITOR
+------
+.. include:: ./changes/editor/version_0_34_6.rst.inc
+
+
+Version 0.34.5
+==============
+
+Partially released on 2024-07-26.
+
+EDITOR
+------
+.. include:: ./changes/editor/version_0_34_5.rst.inc
+
+
+Version 0.34.4
+==============
+
+Released on 2024-07-23.
+
+CORE
+----
+.. include:: ./changes/version_0_34_4.rst.inc
+
+
+Version 0.34.3
+==============
+
+Released on 2024-07-18.
+
+CORE
+----
+.. include:: ./changes/version_0_34_3.rst.inc
+
+EDITOR
+------
+.. include:: ./changes/editor/version_0_34_3.rst.inc
+
+
+Version 0.34.2
+==============
+
+Released on 2023-10-23.
+
+CORE
+----
+.. include:: ./changes/version_0_34_2.rst.inc
+
+EDITOR
+------
+.. include:: ./changes/editor/version_0_34_2.rst.inc
+
+
+Version 0.34.1
+==============
+
+Released on 2023-09-14.
+
+CORE
+----
+.. include:: ./changes/version_0_34_1.rst.inc
+
+EDITOR
+------
+.. include:: ./changes/editor/version_0_34_1.rst.inc
+
+
 Version 0.34
 ============
 
-In development.
+Released on 2023-03-14.
 
 CORE
 ----
@@ -104,7 +176,13 @@ Version 0.31
 
 Released on 2019-08-09.
 
+CORE
+----
 .. include:: ./changes/version_0_31.rst.inc
+
+EDITOR
+------
+.. include:: ./changes/editor/version_0_31.rst.inc
 
 
 Version 0.30
@@ -112,7 +190,13 @@ Version 0.30
 
 Released on 2019-06-27.
 
+CORE
+----
 .. include:: ./changes/version_0_30.rst.inc
+
+EDITOR
+------
+.. include:: ./changes/editor/version_0_30.rst.inc
 
 
 Version 0.29

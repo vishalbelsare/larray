@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 
-from larray.tests.common import assert_array_equal, needs_pytables
+from larray.tests.common import assert_array_equal, needs_pytables, must_raise
 from larray import Axis, IGroup, LGroup, LSet, ndtest, read_hdf
 from larray.util.oset import OrderedSet
 
@@ -39,7 +39,7 @@ def test_equals():
 
 @pytest.fixture
 def lgroups():
-    class TestLGroup():
+    class TestLGroup:
         def __init__(self):
             self.slice_both_named_wh_named_axis = LGroup('1:5', "full", age)
             self.slice_both_named = LGroup('1:5', "named")
@@ -199,7 +199,7 @@ def test_h5_io_lgroup(tmp_path):
     named2 = read_hdf(fpath, key=named.name)
     assert all(named == named2)
     # anonymous group
-    with pytest.raises(ValueError, match="Argument key must be provided explicitly in case of anonymous group"):
+    with must_raise(ValueError, msg="Argument key must be provided explicitly in case of anonymous group"):
         anonymous.to_hdf(fpath)
     # wildcard group
     wildcard.to_hdf(fpath)
@@ -317,7 +317,7 @@ def test_sub_lset():
 
 @pytest.fixture
 def igroups():
-    class TestIGroup():
+    class TestIGroup:
         def __init__(self):
             self.code_axis = Axis('code=a0..a4')
             self.slice_both_named = self.code_axis.i[1:4] >> 'a123'
@@ -439,7 +439,7 @@ def test_h5_io_igroup(tmp_path):
     named2 = read_hdf(fpath, key=named.name)
     assert all(named == named2)
     # anonymous group
-    with pytest.raises(ValueError, match="Argument key must be provided explicitly in case of anonymous group"):
+    with must_raise(ValueError, msg="Argument key must be provided explicitly in case of anonymous group"):
         anonymous.to_hdf(fpath)
     # wildcard group
     wildcard.to_hdf(fpath)

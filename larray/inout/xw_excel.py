@@ -221,7 +221,8 @@ if xw is not None:
         def __setitem__(self, key, value):
             key = _translate_sheet_name(key)
             if self.new_workbook:
-                self.xw_wkb.sheets[0].name = key
+                if isinstance(key, str):
+                    self.xw_wkb.sheets[0].name = key
                 self.new_workbook = False
             key_in_self = key in self
             if isinstance(value, Sheet):
@@ -238,8 +239,11 @@ if xw is not None:
                 value.xw_sheet.api.Copy(None, target_sheet.api)
                 if key_in_self:
                     target_sheet.delete()
-                # rename the new sheet
-                self[target_idx].name = key
+
+                # rename the new sheet if necessary
+                # if the key is an integer, we keep the name of the source sheet
+                if isinstance(key, str):
+                    self[target_idx].name = key
                 return
             if key_in_self:
                 sheet = self[key]
@@ -324,7 +328,7 @@ if xw is not None:
 
     def _fill_slice(s, length):
         r"""
-        replaces a slice None bounds by actual bounds.
+        Replace slice None bounds by actual bounds.
 
         Parameters
         ----------
@@ -522,8 +526,8 @@ if xw is not None:
         def _range_key_to_sheet_key(self, key):
             # string keys does not make sense in this case
             assert not isinstance(key, string_types)
-            row_offset = self.xw_range.row1 - 1
-            col_offset = self.xw_range.col1 - 1
+            row_offset = self.xw_range.row - 1
+            col_offset = self.xw_range.column - 1
             row, col = _concrete_key(key, self.xw_range)
             row = slice(row.start + row_offset, row.stop + row_offset) if isinstance(row, slice) else row + row_offset
             col = slice(col.start + col_offset, col.stop + col_offset) if isinstance(col, slice) else col + col_offset
@@ -649,7 +653,7 @@ open_excel
 """
 
 Workbook.sheet_names.__doc__ = r"""
-Returns the names of the Excel sheets.
+Return the names of the Excel sheets.
 
 Examples
 --------
@@ -668,8 +672,8 @@ Workbook.save.__doc__ = r"""
 Saves the Workbook.
 
 If a path is being provided, this works like SaveAs() in Excel.
-If no path is specified and if the file hasn’t been saved previously,
-it’s being saved in the current working directory with the current filename.
+If no path is specified and if the file hasn't been saved previously,
+it's being saved in the current working directory with the current filename.
 Existing files are overwritten without prompting.
 
 Parameters

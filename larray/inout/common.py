@@ -2,7 +2,7 @@ import os
 from datetime import date, time, datetime
 from pathlib import Path
 
-from typing import Optional, Union, List, Tuple
+from typing import Union, List, Tuple, Dict
 
 from larray.core.axis import Axis
 from larray.core.group import Group
@@ -41,7 +41,7 @@ class FileHandler:
 
     Parameters
     ----------
-    fname : str or Path or None
+    fname : str or Path
         Filename.
 
     Attributes
@@ -49,10 +49,12 @@ class FileHandler:
     fname : Path
         Filename.
     """
-    def __init__(self, fname: Optional[Union[str, Path]], overwrite_file: bool = False):
+
+    def __init__(self, fname: Union[str, Path], overwrite_file: bool = False):
+        assert fname is not None
         if isinstance(fname, str):
             fname = Path(fname)
-        if fname is not None and not isinstance(fname, Path):
+        if not isinstance(fname, Path):
             raise TypeError(f"Expected a string or a pathlib.Path object for the 'fname' argument. "
                             f"Got an object of type {type(fname).__name__} instead.")
         self.fname = fname
@@ -65,19 +67,18 @@ class FileHandler:
     def _open_for_write(self):
         raise NotImplementedError()
 
-    # FIXME : return an ordinary dict instead (Python < 3.6 no longer supported)
-    def list_items(self) -> List[Tuple[str, str]]:
+    def item_types(self) -> Dict[str, str]:
         r"""
-        Return list containing pairs (name, type) for all stored objects
+        Return dict with type of each stored object.
         """
         raise NotImplementedError()
 
     def _read_item(self, key, type, *args, **kwargs):
-        r"""Read item"""
+        r"""Read item."""
         raise NotImplementedError()
 
     def _read_metadata(self) -> Metadata:
-        r"""Read metadata"""
+        r"""Read metadata."""
         raise NotImplementedError()
 
     def _dump_item(self, key, value, *args, **kwargs):
@@ -85,18 +86,18 @@ class FileHandler:
         raise NotImplementedError()
 
     def _dump_metadata(self, metadata):
-        r"""Dump metadata"""
+        r"""Dump metadata."""
         raise NotImplementedError()
 
     def save(self):
         r"""
-        Saves items in file.
+        Save items in file.
         """
         pass
 
     def close(self):
         r"""
-        Closes file.
+        Close file.
         """
         raise NotImplementedError()
 
@@ -112,7 +113,7 @@ class FileHandler:
 
     def read(self, keys, *args, display=False, ignore_exceptions=False, **kwargs) -> Tuple[Metadata, dict]:
         r"""
-        Reads file content (HDF, Excel, CSV, ...) and returns a dictionary containing loaded objects.
+        Read file content (HDF, Excel, CSV, ...) and returns a dictionary containing loaded objects.
 
         Parameters
         ----------
@@ -137,11 +138,11 @@ class FileHandler:
         """
         self._open_for_read()
         metadata = self._read_metadata()
-        key_types = self.list_items()
+        item_types = self.item_types()
         if keys is not None:
-            key_types = [(key, type) for key, type in key_types if key in keys]
+            item_types = {key: type_ for key, type_ in item_types.items() if key in keys}
         res = {}
-        for key, type_ in key_types:
+        for key, type_ in item_types.items():
             if display:
                 print("loading", type_, "object", key, "...", end=' ')
             try:
@@ -154,16 +155,16 @@ class FileHandler:
         self.close()
         return metadata, res
 
-    def dump(self, metadata, key_values, *args, display=False, **kwargs):
+    def dump(self, metadata, values, *args, display=False, **kwargs):
         r"""
-        Dumps objects corresponding to keys in file in HDF, Excel, CSV, ... format
+        Dump objects corresponding to keys in file in HDF, Excel, CSV, ... format.
 
         Parameters
         ----------
         metadata: Metadata
             List of metadata to dump.
-        key_values : list of (str, Array/Axis/Group) pairs
-            Name and data of objects to dump.
+        values : dict
+            Objects to dump as a {name: value} dict.
         display : bool, optional
             Whether to display when the dump of each object is started/done. Defaults to False.
         """
@@ -171,7 +172,7 @@ class FileHandler:
         self._open_for_write()
         if metadata is not None:
             self._dump_metadata(metadata)
-        for key, value in key_values:
+        for key, value in values.items():
             if isinstance(value, Array) and value.ndim == 0:
                 if display:
                     print(f'Cannot dump {key}. Dumping 0D arrays is currently not supported.')
